@@ -4,7 +4,6 @@ let ditheredImg;
 function setup() {
     const canvas = createCanvas(600, 480);
     canvas.center('horizontal');
-    canvas.center('vertical');
     background(220);
 
     // File input
