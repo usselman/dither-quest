@@ -32,13 +32,13 @@ function handleFile(file) {
 
 function ditherImage() {
     img.loadPixels();
-    for (let y = 0; y < img.height; y += .75) {
-        for (let x = 0; x < img.width; x += .75) {
+    for (let y = 0; y < img.height; y += 0.75) {
+        for (let x = 0; x < img.width; x += 0.75) {
             const index = (x + y * img.width) * 4;
             const gray = (img.pixels[index] + img.pixels[index + 1] + img.pixels[index + 2]) / 3;
             const newColor = gray > 128 ? 255 : 0;
-            img.pixels[index] = newColor / 2;
-            img.pixels[index + 1] = newColor * 2;
+            img.pixels[index] = newColor / 0.25;
+            img.pixels[index + 1] = newColor / 2;
             img.pixels[index + 2] = newColor;
         }
     }
