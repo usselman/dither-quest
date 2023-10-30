@@ -4,10 +4,10 @@ h1 {
 }
 
 body {
-    color: #6a5a99;
-    background-color:deepskyblue;
+    color: #000000;
+    background-color:rgb(216, 208, 197);
     font-size: 1.75em;
-    text-shadow: 2px 2px 2px black;
+    text-shadow: 6px 2px 2px rgb(148, 127, 127);
 }
 
 #defaultCanvas0 {
