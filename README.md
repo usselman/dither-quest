@@ -1,1 +1,3 @@
 # ditherQuest
+
+## Let's dither
