@@ -1,13 +1,14 @@
 h1 {
     text-align: center;
-    font-family: 'Pixelify Sans', sans-serif;
+    text-shadow: 6px 2px 2px rgb(148, 127, 127);
 }
 
 body {
+    text-align: center;
     color: #000000;
     background-color:rgb(216, 208, 197);
     font-size: 1.75em;
-    text-shadow: 6px 2px 2px rgb(148, 127, 127);
+    font-family: 'Pixelify Sans', sans-serif;
 }
 
 #defaultCanvas0 {
