@@ -16,11 +16,11 @@ function setup() {
 
     // Sliders for RGB dithering effect
     rSlider = createSlider(50, 255, random(50, 255));
-    rSlider.position(canvas.x, canvas.y + 30);
+    rSlider.position(canvas.x - 150, canvas.y + 30);
     gSlider = createSlider(50, 255, random(50, 255));
-    gSlider.position(canvas.x, canvas.y + 50);
+    gSlider.position(canvas.x - 150, canvas.y + 50);
     bSlider = createSlider(50, 255, random(50, 255));
-    bSlider.position(canvas.x, canvas.y + 70);
+    bSlider.position(canvas.x - 150, canvas.y + 70);
 
     // Randomize button
     randomizeButton = createButton('Randomize');
