@@ -8,13 +8,11 @@ function setup() {
     canvas.center('horizontal');
     background(220);
 
-    // Parent div for the controls
     const controlsDiv = createDiv('');
     controlsDiv.id('controls');
-    controlsDiv.style('text-align', 'justify-between', 'center'); // Center align the controls
-    controlsDiv.position(canvas.x, windowHeight - 220); // Position right below the canvas
+    controlsDiv.style('text-align', 'justify-between', 'center');
+    controlsDiv.position(canvas.x, windowHeight - 220);
 
-    // Sliders for RGB dithering effect
     rSlider = createSlider(50, 255, random(50, 255));
     rSlider.position(canvas.x - 150, canvas.y + 30);
     gSlider = createSlider(50, 255, random(50, 255));
@@ -22,7 +20,6 @@ function setup() {
     bSlider = createSlider(50, 255, random(50, 255));
     bSlider.position(canvas.x - 150, canvas.y + 70);
 
-    // Randomize button
     randomizeButton = createButton('Randomize');
     randomizeButton.parent(controlsDiv);
     randomizeButton.mousePressed(randomizeColors);
@@ -41,7 +38,7 @@ function setup() {
 function draw() {
     if (img) {
         image(img, 0, 100, width, height - 100);
-        ditherImage(); // Call ditherImage in draw to update in real-time
+        ditherImage();
     }
 }
 
@@ -70,7 +67,7 @@ function ditherImage() {
         for (let x = 0; x < img.width; x += 0.75) {
             const index = (x + y * img.width) * 4;
             const gray = (img.pixels[index] + img.pixels[index + 1] + img.pixels[index + 2]) / 3;
-            const threshold = 128; // Define a threshold for dithering
+            const threshold = 128;
             if (gray > threshold) {
                 img.pixels[index] = rSlider.value();
                 img.pixels[index + 1] = gSlider.value();
