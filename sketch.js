@@ -1,6 +1,7 @@
 let img;
 let ditheredImg;
-let rSlider, gSlider, bSlider;
+let bwSlider;
+let resSlider;
 let randomizeButton;
 
 function setup() {
@@ -13,16 +14,17 @@ function setup() {
     controlsDiv.style('text-align', 'justify-between', 'center');
     controlsDiv.position(canvas.x, windowHeight - 220);
 
-    rSlider = createSlider(50, 255, random(50, 255));
-    rSlider.position(canvas.x - 150, canvas.y + 30);
-    gSlider = createSlider(50, 255, random(50, 255));
-    gSlider.position(canvas.x - 150, canvas.y + 50);
-    bSlider = createSlider(50, 255, random(50, 255));
-    bSlider.position(canvas.x - 150, canvas.y + 70);
+    // Black/White threshold slider
+    bwSlider = createSlider(0, 255, 128);
+    bwSlider.parent(controlsDiv);
+
+    // Resolution slider for pixelation effect
+    resSlider = createSlider(1, 20, 1, 1);
+    resSlider.parent(controlsDiv);
 
     randomizeButton = createButton('Randomize');
     randomizeButton.parent(controlsDiv);
-    randomizeButton.mousePressed(randomizeColors);
+    randomizeButton.mousePressed(randomizeThreshold);
 
     // File input
     input = createFileInput(handleFile);
@@ -32,50 +34,56 @@ function setup() {
     button = createButton('Download');
     button.parent(controlsDiv);
     button.mousePressed(downloadImage);
-
 }
 
 function draw() {
     if (img) {
         image(img, 0, 100, width, height - 100);
-        ditherImage();
+        pixelateAndDitherImage();
     }
 }
 
 function handleFile(file) {
     if (file.type === 'image') {
         img = loadImage(file.data, () => {
-            ditherImage();
+            pixelateAndDitherImage();
         });
     }
 }
 
-function randomizeColors() {
-
-    rSlider.value(random(50, 255));
-    gSlider.value(random(50, 255));
-    bSlider.value(random(50, 255));
-
+function randomizeThreshold() {
+    bwSlider.value(random(0, 255));
     if (img) {
-        ditherImage();
+        pixelateAndDitherImage();
     }
 }
 
-function ditherImage() {
+function pixelateAndDitherImage() {
+    let resolution = resSlider.value();
     img.loadPixels();
-    for (let y = 0; y < img.height; y += 0.75) {
-        for (let x = 0; x < img.width; x += 0.75) {
-            const index = (x + y * img.width) * 4;
-            const gray = (img.pixels[index] + img.pixels[index + 1] + img.pixels[index + 2]) / 3;
-            const threshold = 128;
-            if (gray > threshold) {
-                img.pixels[index] = rSlider.value();
-                img.pixels[index + 1] = gSlider.value();
-                img.pixels[index + 2] = bSlider.value();
-            } else {
-                img.pixels[index] = 0;
-                img.pixels[index + 1] = 0;
-                img.pixels[index + 2] = 0;
+    let threshold = bwSlider.value();
+
+    for (let y = 0; y < img.height; y += resolution) {
+        for (let x = 0; x < img.width; x += resolution) {
+            let index = (x + y * img.width) * 4;
+            let gray = 0;
+
+            // Calculate the average grayscale value of the block
+            for (let ny = y; ny < y + resolution && ny < img.height; ny++) {
+                for (let nx = x; nx < x + resolution && nx < img.width; nx++) {
+                    let nindex = (nx + ny * img.width) * 4;
+                    gray += (img.pixels[nindex] + img.pixels[nindex + 1] + img.pixels[nindex + 2]) / 3;
+                }
+            }
+            gray /= resolution * resolution;
+
+            // Apply dithering based on the average gray value
+            let color = gray > threshold ? 255 : 0;
+            for (let ny = y; ny < y + resolution && ny < img.height; ny++) {
+                for (let nx = x; nx < x + resolution && nx < img.width; nx++) {
+                    let nindex = (nx + ny * img.width) * 4;
+                    img.pixels[nindex] = img.pixels[nindex + 1] = img.pixels[nindex + 2] = color;
+                }
             }
         }
     }
