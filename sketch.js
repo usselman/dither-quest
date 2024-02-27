@@ -1,7 +1,7 @@
 let img;
 let ditheredImg;
-let bwSlider; // Black and white slider
-let resSlider; // Resolution slider for dithering
+let bwSlider;
+let resSlider;
 let randomizeButton;
 
 function setup() {
@@ -15,11 +15,11 @@ function setup() {
     controlsDiv.position(canvas.x, windowHeight - 220);
 
     // Black/White threshold slider
-    bwSlider = createSlider(0, 255, 128); // Min, Max, Default values
+    bwSlider = createSlider(0, 255, 128);
     bwSlider.parent(controlsDiv);
 
     // Resolution slider for pixelation effect
-    resSlider = createSlider(1, 20, 1, 1); // Min, Max, Default values, Step
+    resSlider = createSlider(1, 20, 1, 1);
     resSlider.parent(controlsDiv);
 
     randomizeButton = createButton('Randomize');
@@ -52,7 +52,6 @@ function handleFile(file) {
 }
 
 function randomizeThreshold() {
-    // Randomize the threshold value within the full range
     bwSlider.value(random(0, 255));
     if (img) {
         pixelateAndDitherImage();
@@ -68,6 +67,7 @@ function pixelateAndDitherImage() {
         for (let x = 0; x < img.width; x += resolution) {
             let index = (x + y * img.width) * 4;
             let gray = 0;
+
             // Calculate the average grayscale value of the block
             for (let ny = y; ny < y + resolution && ny < img.height; ny++) {
                 for (let nx = x; nx < x + resolution && nx < img.width; nx++) {
