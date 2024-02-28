@@ -70,7 +70,7 @@ function ellipseDitherImage() {
             gray /= count;
 
             // Determine the size of the ellipse based on gray value
-            let size = map(gray, 255, 0, resolution, 0);
+            let size = map(gray, 0, 255, resolution, 0);
 
             // ditheredImg.fill(gray);
             // ditheredImg.noStroke();
