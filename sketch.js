@@ -1,8 +1,10 @@
 let img;
+let ditheredImg; // Off-screen graphics buffer for dithering
+let bwSlider, resSlider;
 let canvas;
 
 function setup() {
-    const canvas = createCanvas(600, 480);
+    canvas = createCanvas(600, 480);
     canvas.center('horizontal');
     background(220);
 
@@ -11,27 +13,24 @@ function setup() {
     controlsDiv.style('text-align', 'justify-between', 'center');
     controlsDiv.position(canvas.x, windowHeight - 220);
 
-    // Black/White threshold slider set to an optimal position
-    bwSlider = createSlider(0, 255, 128); // You might adjust this based on experimentation
+    bwSlider = createSlider(0, 255, 128);
     bwSlider.parent(controlsDiv);
+    bwSlider.input(ellipseDitherImage); // Redraw dithered image when slider changes
+    //bwSlider.label('Threshold');
 
-    // Resolution slider for ellipse effect, set to an optimal position
-    resSlider = createSlider(1, 20, 10); // Adjust as needed for artistic effect
+    resSlider = createSlider(1, 150, 12, 1);
     resSlider.parent(controlsDiv);
+    resSlider.input(ellipseDitherImage); // Redraw dithered image when slider changes
+    //resSlider.label('Resolution');
 
-    // File input
     input = createFileInput(handleFile);
     input.parent(controlsDiv);
 
-    // Download button
     button = createButton('Download');
     button.parent(controlsDiv);
     button.mousePressed(downloadImage);
 
-    bwSlider.input(ellipseDitherImage);
-    resSlider.input(ellipseDitherImage);
-
-    noLoop(); // Stops draw() from continuously executing
+    noLoop();
 }
 
 function draw() {
@@ -41,14 +40,17 @@ function draw() {
 function handleFile(file) {
     if (file.type === 'image') {
         img = loadImage(file.data, () => {
-            ellipseDitherImage(); // Changed to directly call the ellipse dithering function
+            // Initialize off-screen graphics buffer with original image dimensions
+            ditheredImg = createGraphics(img.width, img.height);
+            ellipseDitherImage(); // Apply dithering effect
         });
     }
 }
 
 function ellipseDitherImage() {
-    clear(); // Clears the previous image
-    background(220); // Reset background
+    if (!img) return; // Ensure the image is loaded
+
+    ditheredImg.background(255); // Clear the buffer with a white background (if desired)
     let resolution = resSlider.value();
     img.loadPixels();
 
@@ -69,18 +71,32 @@ function ellipseDitherImage() {
 
             // Determine the size of the ellipse based on gray value
             let size = map(gray, 0, 255, resolution, 0); // Inverse mapping so darker areas have bigger ellipses
-            fill(gray); // Optionally, use black and white only
-            noStroke();
-            ellipse(x + resolution / 2, y + resolution / 2, size, size);
+
+            ditheredImg.fill(gray);
+            ditheredImg.noStroke();
+
+            // ditheredImg.stroke(0);
+            // ditheredImg.strokeWeight(1);
+            // ditheredImg.noFill();
+
+            ditheredImg.ellipse(x + resolution / 2, y + resolution / 2, size, size);
+
+            // ditheredImg.stroke(gray);
+            // ditheredImg.strokeWeight(0.1);
+            // ditheredImg.noFill();
+
+            // ditheredImg.line(x + resolution * 2, size * 50, size * 1.25, size * 1.25);
+
+            ditheredImg.translate(ditheredImg.mouseX, ditheredImg.mouseY);
         }
     }
-    redraw();
+
+    // After applying the dithering effect, display the scaled version on the main canvas
+    image(ditheredImg, 0, 0, width, height);
 }
+
 
 function downloadImage() {
-    saveCanvas('dithered_image', 'png');
+    // Save the off-screen buffer, preserving the original image dimensions and dithering effect
+    save(ditheredImg, 'dithered_image.png');
 }
-
-
-
-// Removed randomizeThreshold function since it's no longer needed

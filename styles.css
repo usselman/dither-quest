@@ -17,3 +17,7 @@ body {
     background-color: white;
     color: white;
 }
+
+#controls {
+    text-align: center;
+}
