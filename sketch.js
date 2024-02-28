@@ -72,12 +72,12 @@ function ellipseDitherImage() {
             // Determine the size of the ellipse based on gray value
             let size = map(gray, 0, 255, resolution, 0); // Inverse mapping so darker areas have bigger ellipses
 
-            ditheredImg.fill(gray);
-            ditheredImg.noStroke();
+            // ditheredImg.fill(gray);
+            // ditheredImg.noStroke();
 
-            // ditheredImg.stroke(0);
-            // ditheredImg.strokeWeight(1);
-            // ditheredImg.noFill();
+            ditheredImg.stroke(0);
+            ditheredImg.strokeWeight(1 * gray / 12.5);
+            ditheredImg.noFill();
 
             ditheredImg.ellipse(x + resolution / 2, y + resolution / 2, size, size);
 
