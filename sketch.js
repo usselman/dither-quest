@@ -18,7 +18,7 @@ function setup() {
     bwSlider.input(ellipseDitherImage); // Redraw dithered image when slider changes
     //bwSlider.label('Threshold');
 
-    resSlider = createSlider(1, 150, 12, 1);
+    resSlider = createSlider(1, 150, 5, 1);
     resSlider.parent(controlsDiv);
     resSlider.input(ellipseDitherImage); // Redraw dithered image when slider changes
     //resSlider.label('Resolution');
@@ -76,8 +76,14 @@ function ellipseDitherImage() {
             // ditheredImg.noStroke();
 
             ditheredImg.stroke(0);
-            ditheredImg.strokeWeight(1 * gray / 12.5);
+            ditheredImg.strokeWeight(1 * gray / 20);
             ditheredImg.noFill();
+            if (gray > 128) {
+                //ditheredImg.noStroke();
+                ditheredImg.strokeWeight(2);
+                ditheredImg.fill(0);
+                ditheredImg.rect(x + resolution / 2, y + resolution / 2, size, size);
+            }
 
             ditheredImg.ellipse(x + resolution / 2, y + resolution / 2, size, size);
 
