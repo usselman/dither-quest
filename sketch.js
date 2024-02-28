@@ -1,8 +1,5 @@
 let img;
-let ditheredImg;
-let bwSlider;
-let resSlider;
-let randomizeButton;
+let canvas;
 
 function setup() {
     const canvas = createCanvas(600, 480);
@@ -14,17 +11,13 @@ function setup() {
     controlsDiv.style('text-align', 'justify-between', 'center');
     controlsDiv.position(canvas.x, windowHeight - 220);
 
-    // Black/White threshold slider
-    bwSlider = createSlider(0, 255, 128);
+    // Black/White threshold slider set to an optimal position
+    bwSlider = createSlider(0, 255, 128); // You might adjust this based on experimentation
     bwSlider.parent(controlsDiv);
 
-    // Resolution slider for pixelation effect
-    resSlider = createSlider(1, 20, 1, 1);
+    // Resolution slider for ellipse effect, set to an optimal position
+    resSlider = createSlider(1, 20, 10); // Adjust as needed for artistic effect
     resSlider.parent(controlsDiv);
-
-    randomizeButton = createButton('Randomize');
-    randomizeButton.parent(controlsDiv);
-    randomizeButton.mousePressed(randomizeThreshold);
 
     // File input
     input = createFileInput(handleFile);
@@ -34,64 +27,60 @@ function setup() {
     button = createButton('Download');
     button.parent(controlsDiv);
     button.mousePressed(downloadImage);
+
+    bwSlider.input(ellipseDitherImage);
+    resSlider.input(ellipseDitherImage);
+
+    noLoop(); // Stops draw() from continuously executing
 }
 
 function draw() {
-    if (img) {
-        image(img, 0, 100, width, height - 100);
-        pixelateAndDitherImage();
-    }
+    // Now only redraws when explicitly called
 }
 
 function handleFile(file) {
     if (file.type === 'image') {
         img = loadImage(file.data, () => {
-            pixelateAndDitherImage();
+            ellipseDitherImage(); // Changed to directly call the ellipse dithering function
         });
     }
 }
 
-function randomizeThreshold() {
-    bwSlider.value(random(0, 255));
-    if (img) {
-        pixelateAndDitherImage();
-    }
-}
-
-function pixelateAndDitherImage() {
+function ellipseDitherImage() {
+    clear(); // Clears the previous image
+    background(220); // Reset background
     let resolution = resSlider.value();
     img.loadPixels();
-    let threshold = bwSlider.value();
 
     for (let y = 0; y < img.height; y += resolution) {
         for (let x = 0; x < img.width; x += resolution) {
-            let index = (x + y * img.width) * 4;
             let gray = 0;
+            let count = 0;
 
             // Calculate the average grayscale value of the block
             for (let ny = y; ny < y + resolution && ny < img.height; ny++) {
                 for (let nx = x; nx < x + resolution && nx < img.width; nx++) {
                     let nindex = (nx + ny * img.width) * 4;
                     gray += (img.pixels[nindex] + img.pixels[nindex + 1] + img.pixels[nindex + 2]) / 3;
+                    count++;
                 }
             }
-            gray /= resolution * resolution;
+            gray /= count;
 
-            // Apply dithering based on the average gray value
-            let color = gray > threshold ? 255 : 0;
-            for (let ny = y; ny < y + resolution && ny < img.height; ny++) {
-                for (let nx = x; nx < x + resolution && nx < img.width; nx++) {
-                    let nindex = (nx + ny * img.width) * 4;
-                    img.pixels[nindex] = img.pixels[nindex + 1] = img.pixels[nindex + 2] = color;
-                }
-            }
+            // Determine the size of the ellipse based on gray value
+            let size = map(gray, 0, 255, resolution, 0); // Inverse mapping so darker areas have bigger ellipses
+            fill(gray); // Optionally, use black and white only
+            noStroke();
+            ellipse(x + resolution / 2, y + resolution / 2, size, size);
         }
     }
-    img.updatePixels();
+    redraw();
 }
 
 function downloadImage() {
-    if (img) {
-        save(img, 'dithered_image.png');
-    }
+    saveCanvas('dithered_image', 'png');
 }
+
+
+
+// Removed randomizeThreshold function since it's no longer needed
