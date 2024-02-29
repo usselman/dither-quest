@@ -1,12 +1,12 @@
 h1 {
     text-align: center;
-    text-shadow: 6px 2px 2px rgb(148, 127, 127);
+    text-shadow: 6px 2px 2px rgb(100, 127, 127);
 }
 
 body {
     text-align: center;
     color: #000000;
-    background-color:rgb(216, 208, 197);
+    background-color:rgb(220, 228, 227);
     font-size: 1.75em;
     font-family: 'Pixelify Sans', sans-serif;
 }

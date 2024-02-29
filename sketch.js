@@ -1,6 +1,6 @@
 let img;
 let ditheredImg; // Off-screen graphics buffer for dithering
-let bwSlider, resSlider;
+let resInput; // Updated to use input boxes
 let canvas;
 
 function setup() {
@@ -10,18 +10,12 @@ function setup() {
 
     const controlsDiv = createDiv('');
     controlsDiv.id('controls');
-    controlsDiv.style('text-align', 'justify-between', 'center');
-    controlsDiv.position(canvas.x, windowHeight - 220);
+    controlsDiv.style('flex', 'justify-between', 'center');
+    controlsDiv.position(canvas.x, windowHeight - 180);
 
-    bwSlider = createSlider(0, 255, 128);
-    bwSlider.parent(controlsDiv);
-    bwSlider.input(ellipseDitherImage); // Redraw dithered image when slider changes
-    //bwSlider.label('Threshold');
-
-    resSlider = createSlider(1, 150, 5, 1);
-    resSlider.parent(controlsDiv);
-    resSlider.input(ellipseDitherImage); // Redraw dithered image when slider changes
-    //resSlider.label('Resolution');
+    createLabelAndInput(controlsDiv, 'Resolution (1-150):', 5, () => {
+        if (img && ditheredImg) ellipseDitherImage();
+    });
 
     input = createFileInput(handleFile);
     input.parent(controlsDiv);
@@ -40,18 +34,31 @@ function draw() {
 function handleFile(file) {
     if (file.type === 'image') {
         img = loadImage(file.data, () => {
-            // Initialize off-screen graphics buffer with original image dimensions
             ditheredImg = createGraphics(img.width, img.height);
-            ellipseDitherImage(); // Apply dithering effect
+            ellipseDitherImage();
         });
     }
 }
 
+function createLabelAndInput(parentDiv, labelText, defaultValue, inputCallback) {
+    let label = createElement('label', labelText);
+    label.parent(parentDiv);
+
+    let input = createInput(defaultValue.toString(), 'number');
+    input.parent(parentDiv);
+    input.input(inputCallback);
+
+    // Assign the input to the appropriate global variable
+    if (labelText.startsWith('Resolution')) {
+        resInput = input; // Make sure this is declared globally
+    }
+}
+
 function ellipseDitherImage() {
-    if (!img) return; // Ensure the image is loaded
+    if (!img || !ditheredImg) return; // Ensure the image is loaded
 
     ditheredImg.background(255); // Clear the buffer with a white background (if desired)
-    let resolution = resSlider.value();
+    let resolution = parseInt(resInput.value());
     img.loadPixels();
 
     for (let y = 0; y < img.height; y += resolution) {
@@ -59,7 +66,6 @@ function ellipseDitherImage() {
             let gray = 0;
             let count = 0;
 
-            // Calculate the average grayscale value of the block
             for (let ny = y; ny < y + resolution && ny < img.height; ny++) {
                 for (let nx = x; nx < x + resolution && nx < img.width; nx++) {
                     let nindex = (nx + ny * img.width) * 4;
@@ -76,24 +82,43 @@ function ellipseDitherImage() {
             // ditheredImg.noStroke();
 
             ditheredImg.stroke(0);
-            ditheredImg.strokeWeight(1 * gray / 20);
+            ditheredImg.strokeWeight(0.1 * gray / 20);
             ditheredImg.noFill();
             if (gray > 128) {
-                //ditheredImg.noStroke();
-                ditheredImg.strokeWeight(2);
+                ditheredImg.noStroke();
+                ditheredImg.strokeWeight(0.02);
+                //ditheredImg.fill(gray / 2, gray / 3, gray / 4);
                 ditheredImg.fill(0);
                 ditheredImg.rect(x + resolution / 2, y + resolution / 2, size, size);
             }
-
-            ditheredImg.ellipse(x + resolution / 2, y + resolution / 2, size, size);
+            if (gray < 20) {
+                ditheredImg.stroke(255);
+                ditheredImg.strokeWeight(0.01);
+                //ditheredImg.noStroke();
+                //ditheredImg.stroke(random(255), gray / 2, gray * 2);
+                ditheredImg.noFill();
+                //ditheredImg.fill(50, random(100), 244);
+                ditheredImg.ellipse(random(width * 4), random(height * 4), random(height * 4), random(width * 4));
+                //ditheredImg.line(random(width * 4), random(height * 4), random(width * 4), random(height * 4));
+            }
+            if (gray > 180) {
+                ditheredImg.noStroke();
+                ditheredImg.fill(255);
+                //ditheredImg.stroke(random(255), 50, 250);
+                ditheredImg.rect(x + resolution / 2, y + resolution / 2, size, size);
+            }
+            //ditheredImg.noStroke();
+            //ditheredImg.rotate(PI / 4);
+            ditheredImg.fill(0);
+            ditheredImg.rect(x + resolution / 2, y + resolution / 2, size, size);
 
             // ditheredImg.stroke(gray);
             // ditheredImg.strokeWeight(0.1);
             // ditheredImg.noFill();
 
-            // ditheredImg.line(x + resolution * 2, size * 50, size * 1.25, size * 1.25);
+            ditheredImg.point(random(width * 4), random(height * 4), random(width * 4), random(height * 4));
 
-            ditheredImg.translate(ditheredImg.mouseX, ditheredImg.mouseY);
+            //ditheredImg.translate(ditheredImg.mouseX, ditheredImg.mouseY);
         }
     }
 
