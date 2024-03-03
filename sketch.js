@@ -56,8 +56,8 @@ function createLabelAndInput(parentDiv, labelText, defaultValue, inputCallback) 
 
 function ellipseDitherImage() {
     if (!img || !ditheredImg) return; // Ensure the image is loaded
-
-    ditheredImg.background(255); // Clear the buffer with a white background (if desired)
+    ditheredImg.background(0);
+    //ditheredImg.background(random(255), random(255), random(255));
     let resolution = parseInt(resInput.value());
     img.loadPixels();
 
@@ -76,19 +76,19 @@ function ellipseDitherImage() {
             gray /= count;
 
             // Determine the size of the ellipse based on gray value
-            let size = map(gray, 0, 255, resolution, 0);
+            let size = map(gray, 255, 0, resolution, 0);
 
             // ditheredImg.fill(gray);
             // ditheredImg.noStroke();
 
-            ditheredImg.stroke(0);
+            ditheredImg.stroke(255);
             ditheredImg.strokeWeight(0.1 * gray / 20);
             ditheredImg.noFill();
             if (gray > 128) {
                 ditheredImg.noStroke();
                 ditheredImg.strokeWeight(0.02);
-                //ditheredImg.fill(gray / 2, gray / 3, gray / 4);
-                ditheredImg.fill(0);
+                ditheredImg.fill(gray * 2, gray * 3, gray * 4);
+                //ditheredImg.fill(0);
                 ditheredImg.rect(x + resolution / 2, y + resolution / 2, size, size);
             }
             if (gray < 20) {
@@ -98,25 +98,26 @@ function ellipseDitherImage() {
                 //ditheredImg.stroke(random(255), gray / 2, gray * 2);
                 ditheredImg.noFill();
                 //ditheredImg.fill(50, random(100), 244);
-                ditheredImg.ellipse(random(width * 4), random(height * 4), random(height * 4), random(width * 4));
-                //ditheredImg.line(random(width * 4), random(height * 4), random(width * 4), random(height * 4));
+                //ditheredImg.ellipse(random(width * 4), random(height * 4), random(height * 4), random(width * 4));
+                ditheredImg.line(random(width * 4), random(height * 4), random(width * 4), random(height * 4));
             }
-            if (gray > 180) {
+            if (gray > 120) {
                 ditheredImg.noStroke();
                 ditheredImg.fill(255);
                 //ditheredImg.stroke(random(255), 50, 250);
-                ditheredImg.rect(x + resolution / 2, y + resolution / 2, size, size);
+                ditheredImg.line(x + resolution / 2, y + resolution / 2, size, size);
             }
-            //ditheredImg.noStroke();
-            //ditheredImg.rotate(PI / 4);
-            ditheredImg.fill(0);
-            ditheredImg.rect(x + resolution / 2, y + resolution / 2, size, size);
+            ditheredImg.noStroke();
+            ditheredImg.rotate(PI / 4);
+            ditheredImg.fill(random(255), random(255), random(255));
+            ditheredImg.ellipse(x + resolution / 2, y + resolution / 2, size, size);
+
 
             // ditheredImg.stroke(gray);
             // ditheredImg.strokeWeight(0.1);
             // ditheredImg.noFill();
 
-            ditheredImg.point(random(width * 4), random(height * 4), random(width * 4), random(height * 4));
+            //ditheredImg.ellipse(random(width * 4), random(height * 4), random(width * 4), random(height * 4));
 
             //ditheredImg.translate(ditheredImg.mouseX, ditheredImg.mouseY);
         }
