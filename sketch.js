@@ -4,7 +4,7 @@ let resInput; // Updated to use input boxes
 let canvas;
 
 function setup() {
-    canvas = createCanvas(600, 480);
+    canvas = createCanvas(600, 480, WEBGL);
     canvas.center('horizontal');
     background(220);
 
@@ -56,10 +56,14 @@ function createLabelAndInput(parentDiv, labelText, defaultValue, inputCallback) 
 
 function ellipseDitherImage() {
     if (!img || !ditheredImg) return; // Ensure the image is loaded
-    ditheredImg.background(0);
-    //ditheredImg.background(random(255), random(255), random(255));
+
+    ditheredImg.background(255);
     let resolution = parseInt(resInput.value());
     img.loadPixels();
+
+    // Define Perlin noise offsets
+    let noiseOffsetX = 0;
+    let noiseOffsetY = 200000000; // Start y offset far enough away from x to get independent noise values
 
     for (let y = 0; y < img.height; y += resolution) {
         for (let x = 0; x < img.width; x += resolution) {
@@ -75,56 +79,31 @@ function ellipseDitherImage() {
             }
             gray /= count;
 
-            // Determine the size of the ellipse based on gray value
-            let size = map(gray, 0, 255, resolution, 0);
+            // Apply Perlin noise to text position
+            let noiseX = noise(noiseOffsetX) * resolution - resolution / 2; // Offset within the block size
+            let noiseY = noise(noiseOffsetY) * resolution - resolution / 2;
 
-            // ditheredImg.fill(gray);
-            // ditheredImg.noStroke();
+            // Updating noise offsets
+            noiseOffsetX += 10; // Increment offsets to walk through the noise space
+            noiseOffsetY += 10;
 
-            ditheredImg.stroke(255);
-            ditheredImg.strokeWeight(0.1 * gray / 20);
-            ditheredImg.noFill();
-            if (gray > 128) {
-                ditheredImg.noStroke();
-                ditheredImg.strokeWeight(0.02);
-                ditheredImg.fill(gray * 2, gray * 3, gray * 4);
-                //ditheredImg.fill(0);
-                ditheredImg.rect(x + resolution / 2, y + resolution / 2, size, size);
-            }
-            if (gray < 20) {
-                ditheredImg.stroke(255);
-                ditheredImg.strokeWeight(0.01);
-                //ditheredImg.noStroke();
-                //ditheredImg.stroke(random(255), gray / 2, gray * 2);
-                ditheredImg.noFill();
-                //ditheredImg.fill(50, random(100), 244);
-                //ditheredImg.ellipse(random(width * 4), random(height * 4), random(height * 4), random(width * 4));
-                ditheredImg.line(random(width * 4), random(height * 4), random(width * 4), random(height * 4));
-            }
-            if (gray > 120) {
-                ditheredImg.noStroke();
-                ditheredImg.fill(255);
-                //ditheredImg.stroke(random(255), 50, 250);
-                ditheredImg.line(x + resolution / 2, y + resolution / 2, size, size);
-            }
-            ditheredImg.noStroke();
-            //ditheredImg.rotate(PI / 4);
-            ditheredImg.fill(random(255), random(255), random(255));
-            ditheredImg.ellipse(x + resolution / 2, y + resolution / 2, size, size);
+            // Text attributes
+            //ditheredImg.fill(random(255), random(255), random(255)); // Set text color
+            ditheredImg.fill(0 + gray); // Set text color
+            //ditheredImg.noStroke();
+            ditheredImg.stroke(random(255), random(255), random(255));
+            ditheredImg.strokeWeight(0.11);
+            ditheredImg.textFont('Arial');
+            ditheredImg.textSize(gray / 10); // Size based on gray value for variation
+            // Draw text with Perlin noise-applied positions
+            ditheredImg.rotate(PI / 2);
+            ditheredImg.text("FUCK", x + resolution / 2 + noiseX, y + resolution / 2 + noiseY);
 
-
-            // ditheredImg.stroke(gray);
-            // ditheredImg.strokeWeight(0.1);
-            // ditheredImg.noFill();
-
-            //ditheredImg.ellipse(random(width * 4), random(height * 4), random(width * 4), random(height * 4));
-
-            //ditheredImg.translate(ditheredImg.mouseX, ditheredImg.mouseY);
         }
     }
 
     // After applying the dithering effect, display the scaled version on the main canvas
-    image(ditheredImg, 0, 0, width, height);
+    image(ditheredImg, -width / 2, -height / 2, width, height);
 }
 
 
