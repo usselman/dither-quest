@@ -76,7 +76,7 @@ function ellipseDitherImage() {
             gray /= count;
 
             // Determine the size of the ellipse based on gray value
-            let size = map(gray, 255, 0, resolution, 0);
+            let size = map(gray, 0, 255, resolution, 0);
 
             // ditheredImg.fill(gray);
             // ditheredImg.noStroke();
@@ -108,7 +108,7 @@ function ellipseDitherImage() {
                 ditheredImg.line(x + resolution / 2, y + resolution / 2, size, size);
             }
             ditheredImg.noStroke();
-            ditheredImg.rotate(PI / 4);
+            //ditheredImg.rotate(PI / 4);
             ditheredImg.fill(random(255), random(255), random(255));
             ditheredImg.ellipse(x + resolution / 2, y + resolution / 2, size, size);
 
