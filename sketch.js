@@ -84,20 +84,23 @@ function ellipseDitherImage() {
             let noiseY = noise(noiseOffsetY) * resolution - resolution / 2;
 
             // Updating noise offsets
-            noiseOffsetX += 1; // Increment offsets to walk through the noise space
-            noiseOffsetY += 1;
+            noiseOffsetX += 10; // Increment offsets to walk through the noise space
+            noiseOffsetY += 10;
 
             // Text attributes
             //ditheredImg.fill(random(255), random(255), random(255)); // Set text color
             //ditheredImg.fill(gray); // Set text color
             //ditheredImg.noStroke();
-            ditheredImg.stroke(gray);
-            ditheredImg.strokeWeight(0.1);
+            ditheredImg.stroke(gray / 2, gray / 2, gray * 3, 255);
+            //ditheredImg.stroke(gray, gray, gray, 255);
+            ditheredImg.strokeWeight(1.25);
+            ditheredImg.noFill();
+            //ditheredImg.fill(random(255), random(255), random(255));
             // ditheredImg.textFont('Times New Roman');
             // ditheredImg.textSize(gray / 20); // Size based on gray value for variation
-            //ditheredImg.rotate(PI);
-            ditheredImg.noFill();
-            ditheredImg.rect(x + resolution / 2 + noiseX, y + resolution / 2 + noiseY, gray * 2, gray * 2);
+            //ditheredImg.rotate(PI / 6);
+
+            ditheredImg.ellipse(x + resolution / 2 + noiseX, y + resolution / 2 + noiseY, gray / 10, gray / 10);
 
         }
     }
