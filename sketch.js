@@ -84,20 +84,20 @@ function ellipseDitherImage() {
             let noiseY = noise(noiseOffsetY) * resolution - resolution / 2;
 
             // Updating noise offsets
-            noiseOffsetX += 10; // Increment offsets to walk through the noise space
-            noiseOffsetY += 10;
+            noiseOffsetX += 1; // Increment offsets to walk through the noise space
+            noiseOffsetY += 1;
 
             // Text attributes
             //ditheredImg.fill(random(255), random(255), random(255)); // Set text color
-            ditheredImg.fill(0 + gray); // Set text color
+            //ditheredImg.fill(gray); // Set text color
             //ditheredImg.noStroke();
-            ditheredImg.stroke(random(255), random(255), random(255));
-            ditheredImg.strokeWeight(0.11);
-            ditheredImg.textFont('Arial');
-            ditheredImg.textSize(gray / 10); // Size based on gray value for variation
-            // Draw text with Perlin noise-applied positions
-            ditheredImg.rotate(PI / 2);
-            ditheredImg.text("FUCK", x + resolution / 2 + noiseX, y + resolution / 2 + noiseY);
+            ditheredImg.stroke(gray);
+            ditheredImg.strokeWeight(0.1);
+            // ditheredImg.textFont('Times New Roman');
+            // ditheredImg.textSize(gray / 20); // Size based on gray value for variation
+            //ditheredImg.rotate(PI);
+            ditheredImg.noFill();
+            ditheredImg.rect(x + resolution / 2 + noiseX, y + resolution / 2 + noiseY, gray * 2, gray * 2);
 
         }
     }
