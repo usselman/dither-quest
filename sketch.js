@@ -62,8 +62,8 @@ function ellipseDitherImage() {
     img.loadPixels();
 
     // Define Perlin noise offsets
-    let noiseOffsetX = 0;
-    let noiseOffsetY = 200000000; // Start y offset far enough away from x to get independent noise values
+    let noiseOffsetX = 10;
+    let noiseOffsetY = 1000000; // Start y offset far enough away from x to get independent noise values
 
     for (let y = 0; y < img.height; y += resolution) {
         for (let x = 0; x < img.width; x += resolution) {
@@ -90,17 +90,21 @@ function ellipseDitherImage() {
             // Text attributes
             //ditheredImg.fill(random(255), random(255), random(255)); // Set text color
             //ditheredImg.fill(gray); // Set text color
-            //ditheredImg.noStroke();
-            ditheredImg.stroke(gray / 2, gray / 2, gray * 3, 255);
-            //ditheredImg.stroke(gray, gray, gray, 255);
-            ditheredImg.strokeWeight(1.25);
-            ditheredImg.noFill();
-            //ditheredImg.fill(random(255), random(255), random(255));
+            ditheredImg.noStroke();
+            //ditheredImg.stroke(gray / 2, gray / 2, gray * 3, 255);
+            //ditheredImg.stroke(random(255), gray, gray, random(255));
+            //ditheredImg.noFill();
+            ditheredImg.strokeWeight(0.25 * gray / 100);
+            //ditheredImg.noFill();
+
+            ditheredImg.fill(random(200), 50, 50, random(255));
+            ditheredImg.rectMode(CENTER);
             // ditheredImg.textFont('Times New Roman');
             // ditheredImg.textSize(gray / 20); // Size based on gray value for variation
-            //ditheredImg.rotate(PI / 6);
+            //ditheredImg.rotate(PI);
 
-            ditheredImg.ellipse(x + resolution / 2 + noiseX, y + resolution / 2 + noiseY, gray / 10, gray / 10);
+            ditheredImg.ellipse(x + resolution / 2 + noiseX, y + resolution / 2 + noiseY, gray / 50, gray / 50);
+
 
         }
     }
