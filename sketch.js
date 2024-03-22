@@ -13,7 +13,7 @@ function setup() {
     controlsDiv.style('flex', 'justify-between', 'center');
     controlsDiv.position(canvas.x, windowHeight - 180);
 
-    createLabelAndInput(controlsDiv, 'Resolution (1-150):', 5, () => {
+    createLabelAndInput(controlsDiv, 'Resolution (1-150):', 8, () => {
         if (img && ditheredImg) ellipseDitherImage();
     });
 
@@ -84,8 +84,8 @@ function ellipseDitherImage() {
             let noiseY = noise(noiseOffsetY) * resolution - resolution / 2;
 
             // Updating noise offsets
-            noiseOffsetX += 10; // Increment offsets to walk through the noise space
-            noiseOffsetY += 10;
+            noiseOffsetX += 100; // Increment offsets to walk through the noise space
+            noiseOffsetY += 100;
 
             // Text attributes
             //ditheredImg.fill(random(255), random(255), random(255)); // Set text color
@@ -94,7 +94,7 @@ function ellipseDitherImage() {
             //ditheredImg.stroke(gray / 2, gray / 2, gray * 3, 255);
             //ditheredImg.stroke(random(255), gray, gray, random(255));
             ditheredImg.noFill();
-            ditheredImg.strokeWeight(0.25);
+            ditheredImg.strokeWeight(1);
 
             ditheredImg.stroke(255);
             ditheredImg.rectMode(CENTER);
@@ -102,7 +102,7 @@ function ellipseDitherImage() {
             // ditheredImg.textSize(gray / 20); // Size based on gray value for variation
             //ditheredImg.rotate(PI);
 
-            ditheredImg.ellipse(x + resolution / 2 + noiseX, y + resolution / 2 + noiseY, gray / 50, gray / 50);
+            ditheredImg.ellipse(x + resolution / 2 + noiseX, y + resolution / 2 + noiseY, gray / 20, gray / 20);
             //ditheredImg.point(x + resolution / 2 + noiseX, y + resolution / 2 + noiseY);
 
 
