@@ -6,7 +6,7 @@ let canvas;
 function setup() {
     canvas = createCanvas(600, 480, WEBGL);
     canvas.center('horizontal');
-    background(220);
+    background(0);
 
     const controlsDiv = createDiv('');
     controlsDiv.id('controls');
@@ -57,7 +57,7 @@ function createLabelAndInput(parentDiv, labelText, defaultValue, inputCallback) 
 function ellipseDitherImage() {
     if (!img || !ditheredImg) return; // Ensure the image is loaded
 
-    ditheredImg.background(255);
+    ditheredImg.background(0);
     let resolution = parseInt(resInput.value());
     img.loadPixels();
 
@@ -90,20 +90,21 @@ function ellipseDitherImage() {
             // Text attributes
             //ditheredImg.fill(random(255), random(255), random(255)); // Set text color
             //ditheredImg.fill(gray); // Set text color
-            ditheredImg.noStroke();
+            //ditheredImg.noStroke();
             //ditheredImg.stroke(gray / 2, gray / 2, gray * 3, 255);
             //ditheredImg.stroke(random(255), gray, gray, random(255));
-            //ditheredImg.noFill();
-            ditheredImg.strokeWeight(0.25 * gray / 100);
-            //ditheredImg.noFill();
+            ditheredImg.noFill();
+            ditheredImg.strokeWeight(0.25);
 
-            ditheredImg.fill(random(200), 50, 50, random(255));
+            ditheredImg.stroke(255);
             ditheredImg.rectMode(CENTER);
             // ditheredImg.textFont('Times New Roman');
             // ditheredImg.textSize(gray / 20); // Size based on gray value for variation
             //ditheredImg.rotate(PI);
 
             ditheredImg.ellipse(x + resolution / 2 + noiseX, y + resolution / 2 + noiseY, gray / 50, gray / 50);
+            //ditheredImg.point(x + resolution / 2 + noiseX, y + resolution / 2 + noiseY);
+
 
 
         }
