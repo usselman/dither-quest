@@ -3,6 +3,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:itch": "vite build --mode itch",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run"
