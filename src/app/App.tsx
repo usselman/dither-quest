@@ -8,7 +8,6 @@ import React, {
 import {
   Download,
   FileImage,
-  FlaskConical,
   Lock,
   LockOpen,
   Plus,
@@ -33,7 +32,7 @@ import {
 } from "../core/pipeline";
 import { extractPalette } from "../core/color";
 import { fileToImageData, imageDataToBlob } from "../core/image";
-import type { PipelineStage, Preset, RenderResponse } from "../core/types";
+import type { PipelineStage, Preset, PreviewQuality, RenderMetrics, RenderRequest, RenderResponse } from "../core/types";
 import "./styles.css";
 
 interface Checkpoint {
@@ -94,7 +93,13 @@ export function App(): React.ReactElement {
   const [preview, setPreview] = useState<ImageData | undefined>();
   const [renderMs, setRenderMs] = useState(0);
   const [seed, setSeed] = useState(12345);
-  const [quality, setQuality] = useState(900);
+  const [quality, setQuality] = useState<PreviewQuality>("balanced");
+  const [isInteracting, setIsInteracting] = useState(false);
+  const [renderState, setRenderState] = useState<"ready" | "rendering" | "stale" | "error">("ready");
+  const [metrics, setMetrics] = useState<RenderMetrics>();
+  const [sourceName, setSourceName] = useState("NO SOURCE");
+  const [presetName, setPresetName] = useState(builtInPresets[2].name);
+  const [presetSearch, setPresetSearch] = useState("");
   const [zoom, setZoom] = useState(1);
   const [compare, setCompare] = useState(false);
   const [status, setStatus] = useState("Drop, paste, or upload an image.");
@@ -112,6 +117,25 @@ export function App(): React.ReactElement {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const requestRef = useRef({ id: "", revision: 0 });
   const workerRef = useRef<Worker | undefined>(undefined);
+  const inFlightRef = useRef(false);
+  const pendingRef = useRef<RenderRequest | undefined>(undefined);
+  const settleRef = useRef<number | undefined>(undefined);
+
+  const previewEdge = useCallback((mode: PreviewQuality) => {
+    const viewport = document.querySelector<HTMLElement>(".viewport");
+    const visibleEdge = Math.max(viewport?.clientWidth ?? 900, viewport?.clientHeight ?? 700);
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const multiplier = mode === "draft" ? 0.45 : mode === "balanced" ? 0.85 : 1.35;
+    return Math.round(Math.min(mode === "draft" ? 520 : mode === "balanced" ? 1200 : 2000, Math.max(320, visibleEdge * dpr * multiplier)));
+  }, []);
+
+  const dispatchNext = useCallback(() => {
+    if (inFlightRef.current || !pendingRef.current || !workerRef.current) return;
+    const request = pendingRef.current;
+    pendingRef.current = undefined;
+    inFlightRef.current = true;
+    workerRef.current.postMessage(request);
+  }, []);
 
   const presets = useMemo(
     () => [...builtInPresets, ...userPresets],
@@ -132,20 +156,46 @@ export function App(): React.ReactElement {
       { type: "module" },
     );
     workerRef.current.onmessage = (event: MessageEvent<RenderResponse>) => {
+      inFlightRef.current = false;
       if (
         event.data.requestId !== requestRef.current.id ||
         event.data.revision !== requestRef.current.revision
-      )
+      ) {
+        dispatchNext();
         return;
+      }
       setPreview(event.data.image);
       setRenderMs(event.data.renderMs);
+      setMetrics(event.data.metrics);
+      setRenderState("ready");
+      requestAnimationFrame(() => dispatchNext());
+    };
+    workerRef.current.onerror = () => {
+      inFlightRef.current = false;
+      setRenderState("error");
+      setStatus("Preview worker failed. Full-resolution actions remain available.");
     };
     return () => workerRef.current?.terminate();
-  }, []);
+  }, [dispatchNext]);
 
   useEffect(() => {
     localStorage.setItem("dq:userPresets", JSON.stringify(userPresets));
   }, [userPresets]);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement;
+      if (/INPUT|TEXTAREA|SELECT/.test(target.tagName)) return;
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") {
+        event.preventDefault();
+        document.querySelector<HTMLButtonElement>(event.shiftKey ? "[data-action=redo]" : "[data-action=undo]")?.click();
+      } else if (event.key === "+" || event.key === "=") setZoom((z) => Math.min(8, z + 0.1));
+      else if (event.key === "-") setZoom((z) => Math.max(0.1, z - 0.1));
+      else if (event.key === "0") setZoom(1);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -166,16 +216,21 @@ export function App(): React.ReactElement {
     const requestId = crypto.randomUUID();
     requestRef.current = { id: requestId, revision };
     const normalized = normalizePipeline(pipeline);
+    const renderQuality: PreviewQuality = isInteracting ? "draft" : quality;
+    setRenderState("stale");
     if (workerRef.current) {
-      workerRef.current.postMessage({
+      pendingRef.current = {
         requestId,
         revision,
         source,
         original,
         pipeline: normalized,
         mode: "preview",
-        maxPreviewEdge: quality,
-      });
+        maxPreviewEdge: previewEdge(renderQuality),
+        quality: renderQuality,
+        sourceId,
+      };
+      dispatchNext();
     } else {
       const result = runPipeline(
         source,
@@ -186,7 +241,7 @@ export function App(): React.ReactElement {
       );
       setPreview(result);
     }
-  }, [source, original, pipeline, quality]);
+  }, [source, original, pipeline, quality, isInteracting, sourceId, previewEdge, dispatchNext]);
 
   const pushHistory = useCallback(() => {
     setUndo((items) => [
@@ -217,6 +272,7 @@ export function App(): React.ReactElement {
     setCheckpoints([]);
     setPreview(undefined);
     setStatus(`${file.name} loaded.`);
+    setSourceName(file.name);
   }, []);
 
   const applyPreset = (preset: Preset, mode: "replace" | "append") => {
@@ -231,6 +287,7 @@ export function App(): React.ReactElement {
         : [...pipeline, ...stages].slice(0, MAX_STAGE_COUNT),
     );
     setSelectedStageId(stages[0]?.id);
+    setPresetName(preset.name);
   };
 
   const commit = async () => {
@@ -342,6 +399,7 @@ export function App(): React.ReactElement {
     if (id === "original" && original) {
       setSource(original);
       setSourceId("original");
+      setSourceName("ORIGINAL ROOT");
       return;
     }
     const cp = checkpoints.find((item) => item.id === id);
@@ -349,6 +407,7 @@ export function App(): React.ReactElement {
     const image = await checkpointImage(cp);
     setSource(image);
     setSourceId(id);
+    setSourceName(cp.name.toUpperCase());
   };
 
   const updateStageParam = (stageId: string, key: string, value: unknown) => {
@@ -359,6 +418,16 @@ export function App(): React.ReactElement {
           : stage,
       ),
     );
+  };
+
+  const beginInteraction = () => {
+    window.clearTimeout(settleRef.current);
+    setIsInteracting(true);
+  };
+
+  const endInteraction = () => {
+    window.clearTimeout(settleRef.current);
+    settleRef.current = window.setTimeout(() => setIsInteracting(false), 140);
   };
 
   const lockParam = (stageId: string, key: string) => {
@@ -396,9 +465,14 @@ export function App(): React.ReactElement {
     >
       <header className="topbar">
         <div className="brand">
-          <FlaskConical size={18} /> Dither Quest{" "}
-          <span>arcane image instrument</span>
+          <span className="brandIndex">DQ—01</span>
+          <strong>DITHER<br />QUEST</strong>
+          <span>arcane<br />image instrument</span>
         </div>
+        <div className="headerMeta"><small>SOURCE</small><b>{sourceName}</b></div>
+        <div className="headerMeta"><small>CHECKPOINT</small><b>{sourceId === "original" ? "ROOT" : `PRINT ${checkpoints.findIndex((cp) => cp.id === sourceId) + 1}`}</b></div>
+        <div className="headerMeta"><small>PRESET</small><b>{presetName}</b></div>
+        <div className={`renderBadge ${renderState}`} aria-live="polite">{renderState === "ready" ? (metrics?.cacheHits ? "CACHED / READY" : "READY") : renderState.toUpperCase()}</div>
         <label className="tool">
           <Upload size={15} />
           <input
@@ -412,6 +486,8 @@ export function App(): React.ReactElement {
           Upload
         </label>
         <button
+          data-action="undo"
+          aria-label="Undo"
           onClick={() => {
             const last = undo.at(-1);
             if (!last) return;
@@ -424,6 +500,8 @@ export function App(): React.ReactElement {
           <Undo2 size={15} />
         </button>
         <button
+          data-action="redo"
+          aria-label="Redo"
           onClick={() => {
             const next = redo.at(-1);
             if (!next) return;
@@ -435,18 +513,8 @@ export function App(): React.ReactElement {
         >
           <Redo2 size={15} />
         </button>
-        <button onClick={() => setCompare((v) => !v)}>Compare</button>
-        <label>
-          Preview{" "}
-          <input
-            type="range"
-            min={360}
-            max={1600}
-            step={20}
-            value={quality}
-            onChange={(e) => setQuality(Number(e.target.value))}
-          />
-        </label>
+        <button aria-pressed={compare} onClick={() => setCompare((v) => !v)}>Before / After</button>
+        <label>QUALITY <select value={quality} onChange={(e) => setQuality(e.target.value as PreviewQuality)}><option value="draft">Draft</option><option value="balanced">Balanced</option><option value="full">Full</option></select></label>
         <label>
           Seed{" "}
           <input
@@ -484,7 +552,7 @@ export function App(): React.ReactElement {
           Mutate
         </button>
         <button className="primary" onClick={() => void commit()}>
-          Print
+          Print / Commit
         </button>
         <button onClick={() => void exportImage("image/png")}>
           <Download size={15} />
@@ -497,7 +565,8 @@ export function App(): React.ReactElement {
 
       <aside className="left panel">
         <section>
-          <h2>Presets</h2>
+          <h2><i>01</i> Preset matrix</h2>
+          <input className="search" type="search" placeholder="SEARCH PRESETS" aria-label="Search presets" value={presetSearch} onChange={(e) => setPresetSearch(e.target.value)} />
           {(
             [
               "Traditional",
@@ -516,7 +585,7 @@ export function App(): React.ReactElement {
             >
               <summary>{cat}</summary>
               {presets
-                .filter((p) => p.category === cat)
+                .filter((p) => p.category === cat && `${p.name} ${p.description}`.toLowerCase().includes(presetSearch.toLowerCase()))
                 .map((preset) => (
                   <div
                     className="preset"
@@ -524,7 +593,7 @@ export function App(): React.ReactElement {
                     title={preset.description}
                   >
                     <button onClick={() => applyPreset(preset, "replace")}>
-                      {preset.name}
+                      <span><b>{preset.name}</b><small>{preset.category} · {preset.stages.length} STG</small></span>
                     </button>
                     <button onClick={() => applyPreset(preset, "append")}>
                       <Plus size={13} />
@@ -551,7 +620,7 @@ export function App(): React.ReactElement {
           </div>
         </section>
         <section>
-          <h2>Library</h2>
+          <h2><i>02</i> Processor library</h2>
           {Object.values(processorRegistry).map((def) => (
             <button
               key={def.type}
@@ -569,7 +638,7 @@ export function App(): React.ReactElement {
           ))}
         </section>
         <section>
-          <h2>Checkpoints</h2>
+          <h2><i>03</i> Checkpoint archive</h2>
           {original && (
             <button
               className={sourceId === "original" ? "active" : ""}
@@ -613,14 +682,17 @@ export function App(): React.ReactElement {
       </aside>
 
       <section className="viewport">
+        <div className="viewportLabel">VISUAL OUTPUT / PREVIEW MATRIX</div>
         {!source && (
           <div className="dropzone">
             Drop an image, paste from clipboard, or use Upload.
           </div>
         )}
-        <div className="canvasWrap">
+        <div className={`canvasWrap ${renderState === "stale" ? "isStale" : ""}`}>
           <canvas ref={canvasRef} />
+          {renderState === "stale" && <span className="staleFlag">STALE PREVIEW / RENDERING {isInteracting ? "DRAFT" : quality.toUpperCase()}</span>}
         </div>
+        <div className="readout">{previewSize} · {(zoom * 100).toFixed(0)}% · {isInteracting ? "DRAFT" : quality.toUpperCase()} · {renderMs.toFixed(1)} MS</div>
         <div className="viewtools">
           <button onClick={() => setZoom(1)}>100%</button>
           <button onClick={() => setZoom((z) => Math.max(0.1, z - 0.1))}>
@@ -646,7 +718,7 @@ export function App(): React.ReactElement {
 
       <aside className="right panel">
         <section>
-          <h2>Stack</h2>
+          <h2><i>04</i> Ordered stage stack</h2>
           {pipeline.map((stage, index) => (
             <div
               className={`stage ${selectedStage?.id === stage.id ? "active" : ""}`}
@@ -748,6 +820,11 @@ export function App(): React.ReactElement {
                           max={meta.max}
                           step={meta.step}
                           value={Number(value)}
+                          onPointerDown={beginInteraction}
+                          onPointerUp={endInteraction}
+                          onPointerCancel={endInteraction}
+                          onKeyDown={beginInteraction}
+                          onKeyUp={endInteraction}
                           onChange={(e) =>
                             updateStageParam(
                               selectedStage.id,
@@ -874,13 +951,16 @@ export function App(): React.ReactElement {
       </aside>
 
       <footer className="status">
-        <span>{status}</span>
-        <span>source {sourceSize}</span>
-        <span>preview {previewSize}</span>
-        <span>render {renderMs.toFixed(1)} ms</span>
-        <span>memory {formatBytes(memory)}</span>
-        <span>zoom {(zoom * 100).toFixed(0)}%</span>
-        <span>seed {seed}</span>
+        <span><b>SYS</b> {status}</span>
+        <span>SRC {sourceSize}</span>
+        <span>PREV {previewSize}</span>
+        <span>EXPORT {sourceSize}</span>
+        <span>RENDER {renderMs.toFixed(1)} MS</span>
+        <span>MEM {formatBytes(memory + (metrics?.cacheBytes ?? 0))}</span>
+        <span>ZOOM {(zoom * 100).toFixed(0)}%</span>
+        <span>SEED {seed}</span>
+        <span>CACHE {metrics ? `${metrics.cacheHits}H/${metrics.cacheMisses}M` : "COLD"}</span>
+        <span>WORKER {renderState === "ready" ? "IDLE" : "ACTIVE"}</span>
         <span>
           {memory > MAX_CHECKPOINT_MEMORY ? "memory warning" : "stable"}
         </span>

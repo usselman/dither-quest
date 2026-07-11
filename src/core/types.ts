@@ -106,6 +106,20 @@ export interface RenderRequest {
   pipeline: PipelineStage[];
   mode: "preview" | "full";
   maxPreviewEdge: number;
+  quality: PreviewQuality;
+  sourceId: string;
+}
+
+export type PreviewQuality = "draft" | "balanced" | "full";
+
+export interface RenderMetrics {
+  totalMs: number;
+  resizeMs: number;
+  pipelineMs: number;
+  stages: Array<{ index: number; type: ProcessorType; ms: number; cached: boolean }>;
+  cacheHits: number;
+  cacheMisses: number;
+  cacheBytes: number;
 }
 
 export interface RenderResponse {
@@ -113,4 +127,6 @@ export interface RenderResponse {
   revision: number;
   image: ImageData;
   renderMs: number;
+  quality: PreviewQuality;
+  metrics: RenderMetrics;
 }
