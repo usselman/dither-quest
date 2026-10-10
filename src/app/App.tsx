@@ -17,6 +17,9 @@ import {
   Wand2,
   Undo2,
 } from "lucide-react";
+import { Badge, Button, Dialog, Panel, TextField } from "@sheol/ui";
+import { decodePreset } from "../core/presetIO";
+import "@sheol/ui/styles.css";
 import { builtInPresets } from "../core/presets";
 import {
   defaultParams,
@@ -31,7 +34,7 @@ import {
   validatePresetStages,
 } from "../core/pipeline";
 import { extractPalette } from "../core/color";
-import { fileToImageData, imageDataToBlob } from "../core/image";
+import { fileToImageData, imageDataToBlob, resizeImageData } from "../core/image";
 import type { PipelineStage, Preset, PreviewQuality, RenderMetrics, RenderRequest, RenderResponse } from "../core/types";
 import "./styles.css";
 
@@ -82,6 +85,15 @@ async function checkpointImage(cp: Checkpoint): Promise<ImageData> {
 }
 
 export function App(): React.ReactElement {
+  const [saveOpen, setSaveOpen] = useState(false);
+  const [savedName, setSavedName] = useState("User Ritual");
+  const [busy, setBusy] = useState(false);
+  const [rootRevision, setRootRevision] = useState(0);
+  const loadRevisionRef = useRef(0);
+  const actionRef = useRef(false);
+  const checkpointUrlsRef = useRef(new Set<string>());
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const presetInputRef = useRef<HTMLInputElement>(null);
   const [original, setOriginal] = useState<ImageData | undefined>();
   const [sourceId, setSourceId] = useState("original");
   const [checkpoints, setCheckpoints] = useState<Checkpoint[]>([]);
@@ -107,9 +119,8 @@ export function App(): React.ReactElement {
   const [redo, setRedo] = useState<HistoryEntry[]>([]);
   const [userPresets, setUserPresets] = useState<Preset[]>(() => {
     try {
-      return JSON.parse(
-        localStorage.getItem("dq:userPresets") ?? "[]",
-      ) as Preset[];
+      const stored: unknown = JSON.parse(localStorage.getItem("dq:userPresets") ?? "[]");
+      return Array.isArray(stored) ? stored.map((item) => decodePreset(item)) : [];
     } catch {
       return [];
     }
@@ -151,10 +162,15 @@ export function App(): React.ReactElement {
   const previewSize = preview ? `${preview.width} x ${preview.height}` : "-";
 
   useEffect(() => {
-    workerRef.current = new Worker(
-      new URL("../workers/renderWorker.ts", import.meta.url),
-      { type: "module" },
-    );
+    try {
+      workerRef.current = new Worker(
+        new URL("../workers/renderWorker.ts", import.meta.url),
+        { type: "module" },
+      );
+    } catch {
+      setStatus("Preview worker is unavailable. Using the local renderer.");
+      return;
+    }
     workerRef.current.onmessage = (event: MessageEvent<RenderResponse>) => {
       inFlightRef.current = false;
       if (
@@ -170,8 +186,12 @@ export function App(): React.ReactElement {
       setRenderState("ready");
       requestAnimationFrame(() => dispatchNext());
     };
-    workerRef.current.onerror = () => {
+    workerRef.current.onerror = (event) => {
+      event.preventDefault();
       inFlightRef.current = false;
+      workerRef.current?.terminate();
+      workerRef.current = undefined;
+      pendingRef.current = undefined;
       setRenderState("error");
       setStatus("Preview worker failed. Full-resolution actions remain available.");
     };
@@ -179,13 +199,14 @@ export function App(): React.ReactElement {
   }, [dispatchNext]);
 
   useEffect(() => {
-    localStorage.setItem("dq:userPresets", JSON.stringify(userPresets));
+    try { localStorage.setItem("dq:userPresets", JSON.stringify(userPresets)); }
+    catch { setStatus("Presets could not be saved locally. Export JSON to keep a copy."); }
   }, [userPresets]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement;
-      if (/INPUT|TEXTAREA|SELECT/.test(target.tagName)) return;
+      if (/INPUT|TEXTAREA|SELECT/.test(target.tagName) || target.isContentEditable || document.querySelector("dialog[open]")) return;
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") {
         event.preventDefault();
         document.querySelector<HTMLButtonElement>(event.shiftKey ? "[data-action=redo]" : "[data-action=undo]")?.click();
@@ -201,10 +222,11 @@ export function App(): React.ReactElement {
     const canvas = canvasRef.current;
     const image = preview ?? source;
     if (!canvas || !image) return;
-    canvas.width = image.width;
-    canvas.height = image.height;
-    canvas.style.width = `${image.width * zoom}px`;
-    canvas.style.height = `${image.height * zoom}px`;
+    const visible = compare && source ? source : image;
+    canvas.width = visible.width;
+    canvas.height = visible.height;
+    canvas.style.width = `${visible.width * zoom}px`;
+    canvas.style.height = `${visible.height * zoom}px`;
     canvas
       .getContext("2d")
       ?.putImageData(compare && source ? source : image, 0, 0);
@@ -228,20 +250,24 @@ export function App(): React.ReactElement {
         mode: "preview",
         maxPreviewEdge: previewEdge(renderQuality),
         quality: renderQuality,
-        sourceId,
+        sourceId: `${rootRevision}:${sourceId}`,
       };
       dispatchNext();
     } else {
-      const result = runPipeline(
-        source,
-        normalized,
-        original,
-        "preview",
-        revision,
-      );
-      setPreview(result);
+      try {
+        const edge = previewEdge(renderQuality);
+        const result = runPipeline(
+          resizeImageData(source, edge), normalized,
+          original ? resizeImageData(original, edge) : undefined, "preview", revision,
+        );
+        setPreview(result);
+        setRenderState("ready");
+      } catch {
+        setRenderState("error");
+        setStatus("Preview could not render. Reset the stage or choose another preset.");
+      }
     }
-  }, [source, original, pipeline, quality, isInteracting, sourceId, previewEdge, dispatchNext]);
+  }, [source, original, pipeline, quality, isInteracting, sourceId, rootRevision, previewEdge, dispatchNext]);
 
   const pushHistory = useCallback(() => {
     setUndo((items) => [
@@ -260,12 +286,22 @@ export function App(): React.ReactElement {
   );
 
   const handleFile = useCallback(async (file: File) => {
-    if (!file.type.startsWith("image/")) return;
-    const image = await fileToImageData(file);
+    if (!file || !file.type.startsWith("image/")) { setStatus("Choose a PNG, JPEG, or WebP image."); return; }
+    const revision = ++loadRevisionRef.current;
+    setStatus(`Loading ${file.name}…`);
+    let image: ImageData;
+    try { image = await fileToImageData(file); }
+    catch { if (revision === loadRevisionRef.current) setStatus("Image could not be read. Try another PNG, JPEG, or WebP."); return; }
+    if (revision !== loadRevisionRef.current) return;
     if ((image.width * image.height) / 1_000_000 > MAX_MEGAPIXELS) {
       setStatus(`Image exceeds ${MAX_MEGAPIXELS} MP safety limit.`);
       return;
     }
+    requestRef.current = { id: "", revision: requestRef.current.revision + 1 };
+    pendingRef.current = undefined;
+    checkpointUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    checkpointUrlsRef.current.clear();
+    setRootRevision((value) => value + 1);
     setOriginal(image);
     setSource(image);
     setSourceId("original");
@@ -293,6 +329,7 @@ export function App(): React.ReactElement {
   const commit = async () => {
     if (!source) return;
     setStatus("Printing full-resolution checkpoint...");
+    const loadRevision = loadRevisionRef.current;
     const image = runPipeline(
       source,
       pipeline,
@@ -301,7 +338,9 @@ export function App(): React.ReactElement {
       requestRef.current.revision + 1,
     );
     const blob = await imageDataToBlob(image, "image/png");
+    if (loadRevision !== loadRevisionRef.current) return;
     const url = URL.createObjectURL(blob);
+    checkpointUrlsRef.current.add(url);
     const checkpoint: Checkpoint = {
       id: crypto.randomUUID(),
       name: `Print ${checkpoints.length + 1}`,
@@ -325,6 +364,7 @@ export function App(): React.ReactElement {
     setCheckpoints(next);
     setSource(image);
     setSourceId(checkpoint.id);
+    setSourceName(checkpoint.name);
     setStatus(`Committed ${checkpoint.name}.`);
   };
 
@@ -345,44 +385,40 @@ export function App(): React.ReactElement {
     a.download = `dither-quest.${type.split("/")[1]}`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+    setStatus(`${type.split("/")[1].toUpperCase()} exported at full resolution.`);
   };
 
   const copyImage = async () => {
-    if (!preview || !("ClipboardItem" in window)) return;
+    if (!preview) return;
+    if (!("ClipboardItem" in window) || !navigator.clipboard?.write) throw new Error("Image clipboard is unavailable. Use PNG export.");
     const blob = await imageDataToBlob(preview, "image/png");
     await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
     setStatus("Preview copied as PNG.");
   };
 
   const savePreset = () => {
-    const name = prompt("Preset name", "User Ritual");
-    if (!name) return;
-    setUserPresets((items) => [
-      ...items,
-      {
-        id: crypto.randomUUID(),
-        name,
-        category: "User",
-        description: "Saved local stack.",
-        stages: pipeline.map(cloneStage),
-      },
-    ]);
+    if (!savedName.trim()) return;
+    setUserPresets((items) => [...items, {
+      id: crypto.randomUUID(), name: savedName.trim(), category: "User",
+      description: "Saved local stack.", stages: pipeline.map(cloneStage),
+    }]);
+    setSaveOpen(false);
+    setStatus(`Saved ${savedName.trim()}.`);
   };
 
   const importPreset = async (file: File) => {
-    const imported = JSON.parse(await file.text()) as Preset;
-    if (validatePresetStages(imported.stages))
-      setUserPresets((items) => [
-        ...items,
-        { ...imported, id: crypto.randomUUID(), category: "User" },
-      ]);
+    try {
+      const imported = decodePreset(JSON.parse(await file.text()), file.name);
+      setUserPresets((items) => [...items, imported]);
+      setStatus(`Imported ${imported.name}. Find it in User presets.`);
+    } catch { setStatus("Invalid preset JSON. Use a Dither Quest preset export with valid stages."); }
   };
 
   const exportPresetJson = () => {
     const blob = new Blob(
       [
         JSON.stringify(
-          { pipeline, seed, cacheKey: cacheKeyFor(pipeline) },
+          { name: presetName, category: "User", description: "Exported Dither Quest stack.", stages: pipeline, pipeline, seed, cacheKey: cacheKeyFor(pipeline) },
           null,
           2,
         ),
@@ -393,6 +429,8 @@ export function App(): React.ReactElement {
     a.href = URL.createObjectURL(blob);
     a.download = "dither-quest-preset.json";
     a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+    setStatus("Preset JSON exported.");
   };
 
   const selectCheckpoint = async (id: string) => {
@@ -405,6 +443,7 @@ export function App(): React.ReactElement {
     const cp = checkpoints.find((item) => item.id === id);
     if (!cp) return;
     const image = await checkpointImage(cp);
+    if (!checkpointUrlsRef.current.has(cp.url ?? "")) return;
     setSource(image);
     setSourceId(id);
     setSourceName(cp.name.toUpperCase());
@@ -450,6 +489,27 @@ export function App(): React.ReactElement {
     updatePipeline(next);
   };
 
+  const perform = async (action: () => Promise<void>) => {
+    if (actionRef.current) return;
+    actionRef.current = true;
+    setBusy(true);
+    try { await action(); }
+    catch (error) { setStatus(error instanceof Error ? error.message : "Action failed. Please try again."); }
+    finally { actionRef.current = false; setBusy(false); }
+  };
+
+  const deleteCheckpoint = (cp: Checkpoint) => {
+    if (cp.url) { URL.revokeObjectURL(cp.url); checkpointUrlsRef.current.delete(cp.url); }
+    setCheckpoints((items) => items.filter((item) => item.id !== cp.id));
+    if (sourceId === cp.id && original) { setSource(original); setSourceId("original"); setSourceName("ORIGINAL ROOT"); }
+    setStatus(`Deleted ${cp.name}.`);
+  };
+
+  useEffect(() => () => {
+    checkpointUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    window.clearTimeout(settleRef.current);
+  }, []);
+
   return (
     <main
       className="shell"
@@ -472,21 +532,26 @@ export function App(): React.ReactElement {
         <div className="headerMeta"><small>SOURCE</small><b>{sourceName}</b></div>
         <div className="headerMeta"><small>CHECKPOINT</small><b>{sourceId === "original" ? "ROOT" : `PRINT ${checkpoints.findIndex((cp) => cp.id === sourceId) + 1}`}</b></div>
         <div className="headerMeta"><small>PRESET</small><b>{presetName}</b></div>
-        <div className={`renderBadge ${renderState}`} aria-live="polite">{renderState === "ready" ? (metrics?.cacheHits ? "CACHED / READY" : "READY") : renderState.toUpperCase()}</div>
-        <label className="tool">
+        <Badge tone={renderState === "ready" ? "blue" : "yellow"} aria-live="polite">{renderState === "ready" ? (metrics?.cacheHits ? "CACHED / READY" : "READY") : renderState.toUpperCase()}</Badge>
+        </header>
+        <nav className="toolbar" aria-label="Image and pipeline actions">
+        <Button size="sm" tone="orange" onClick={() => imageInputRef.current?.click()}>
           <Upload size={15} />
+          Upload image
+        </Button>
           <input
+            ref={imageInputRef}
             hidden
             type="file"
+            aria-label="Upload image file"
             accept="image/png,image/jpeg,image/webp"
             onChange={(e) =>
-              e.target.files?.[0] && void handleFile(e.target.files[0])
+              { const file = e.target.files?.[0]; e.target.value = ""; if (file) void handleFile(file); }
             }
           />
-          Upload
-        </label>
-        <button
+        <Button size="sm"
           data-action="undo"
+          disabled={!undo.length}
           aria-label="Undo"
           onClick={() => {
             const last = undo.at(-1);
@@ -498,9 +563,10 @@ export function App(): React.ReactElement {
           }}
         >
           <Undo2 size={15} />
-        </button>
-        <button
+        </Button>
+        <Button size="sm"
           data-action="redo"
+          disabled={!redo.length}
           aria-label="Redo"
           onClick={() => {
             const next = redo.at(-1);
@@ -512,19 +578,11 @@ export function App(): React.ReactElement {
           }}
         >
           <Redo2 size={15} />
-        </button>
-        <button aria-pressed={compare} onClick={() => setCompare((v) => !v)}>Before / After</button>
-        <label>QUALITY <select value={quality} onChange={(e) => setQuality(e.target.value as PreviewQuality)}><option value="draft">Draft</option><option value="balanced">Balanced</option><option value="full">Full</option></select></label>
-        <label>
-          Seed{" "}
-          <input
-            className="seed"
-            type="number"
-            value={seed}
-            onChange={(e) => setSeed(Number(e.target.value))}
-          />
-        </label>
-        <button
+        </Button>
+        <Button size="sm" disabled={!source} aria-pressed={compare} onClick={() => setCompare((v) => !v)}>Before / After</Button>
+        <label className="quality">Quality <select className="sh-select" value={quality} onChange={(e) => setQuality(e.target.value as PreviewQuality)}><option value="draft">Draft</option><option value="balanced">Balanced</option><option value="full">Full</option></select></label>
+        <TextField label="Seed" containerClassName="seedField" type="number" value={seed} onChange={(e) => setSeed(Number(e.target.value))} />
+        <Button size="sm"
           onClick={() => {
             const next = Math.floor(Math.random() * 1_000_000);
             setSeed(next);
@@ -537,36 +595,36 @@ export function App(): React.ReactElement {
         >
           <Shuffle size={15} />
           Reroll
-        </button>
-        <button
+        </Button>
+        <Button size="sm"
           onClick={() => updatePipeline(randomizeUnlocked(pipeline, seed, 1))}
         >
           <Wand2 size={15} />
           Random
-        </button>
-        <button
+        </Button>
+        <Button size="sm"
           onClick={() =>
             updatePipeline(randomizeUnlocked(pipeline, seed + 99, 0.25))
           }
         >
           Mutate
-        </button>
-        <button className="primary" onClick={() => void commit()}>
+        </Button>
+        <Button size="sm" tone="orange" disabled={!source || busy} loading={busy} onClick={() => void perform(commit)}>
           Print / Commit
-        </button>
-        <button onClick={() => void exportImage("image/png")}>
+        </Button>
+        <Button size="sm" disabled={!source || busy} onClick={() => void perform(() => exportImage("image/png"))}>
           <Download size={15} />
           PNG
-        </button>
-        <button onClick={() => void exportImage("image/jpeg")}>JPG</button>
-        <button onClick={() => void exportImage("image/webp")}>WebP</button>
-        <button onClick={() => void copyImage()}>Copy</button>
-      </header>
+        </Button>
+        <Button size="sm" disabled={!source || busy} onClick={() => void perform(() => exportImage("image/jpeg"))}>JPG</Button>
+        <Button size="sm" disabled={!source || busy} onClick={() => void perform(() => exportImage("image/webp"))}>WebP</Button>
+        <Button size="sm" disabled={!preview || busy} onClick={() => void perform(copyImage)}>Copy</Button>
+      </nav>
 
       <aside className="left panel">
-        <section>
+        <Panel className="module">
           <h2><i>01</i> Preset matrix</h2>
-          <input className="search" type="search" placeholder="SEARCH PRESETS" aria-label="Search presets" value={presetSearch} onChange={(e) => setPresetSearch(e.target.value)} />
+          <TextField label="Search presets" type="search" placeholder="Name or description" value={presetSearch} onChange={(e) => setPresetSearch(e.target.value)} />
           {(
             [
               "Traditional",
@@ -592,37 +650,40 @@ export function App(): React.ReactElement {
                     key={preset.id}
                     title={preset.description}
                   >
-                    <button onClick={() => applyPreset(preset, "replace")}>
+                    <Button size="sm" onClick={() => applyPreset(preset, "replace")}>
                       <span><b>{preset.name}</b><small>{preset.category} · {preset.stages.length} STG</small></span>
-                    </button>
-                    <button onClick={() => applyPreset(preset, "append")}>
+                    </Button>
+                    <Button size="sm" aria-label={`Append ${preset.name}`} disabled={pipeline.length >= MAX_STAGE_COUNT} onClick={() => applyPreset(preset, "append")}>
                       <Plus size={13} />
-                    </button>
+                    </Button>
                   </div>
                 ))}
             </details>
           ))}
           <div className="row">
-            <button onClick={savePreset}>Save</button>
-            <button onClick={exportPresetJson}>Export JSON</button>
-            <label className="tool">
+            <Button size="sm" onClick={() => setSaveOpen(true)}>Save</Button>
+            <Button size="sm" onClick={exportPresetJson}>Export JSON</Button>
+            <Button size="sm" onClick={() => presetInputRef.current?.click()}>
               <FileImage size={14} />
               Import
+            </Button>
               <input
+                ref={presetInputRef}
                 hidden
                 type="file"
-                accept="application/json"
+                aria-label="Import preset file"
+                accept="application/json,.json"
                 onChange={(e) =>
-                  e.target.files?.[0] && void importPreset(e.target.files[0])
+                  { const file = e.target.files?.[0]; e.target.value = ""; if (file) void importPreset(file); }
                 }
               />
-            </label>
           </div>
-        </section>
-        <section>
+        </Panel>
+        <Panel className="module">
           <h2><i>02</i> Processor library</h2>
           {Object.values(processorRegistry).map((def) => (
-            <button
+            <Button size="sm"
+              disabled={pipeline.length >= MAX_STAGE_COUNT}
               key={def.type}
               onClick={() =>
                 updatePipeline(
@@ -634,29 +695,29 @@ export function App(): React.ReactElement {
               }
             >
               {def.name}
-            </button>
+            </Button>
           ))}
-        </section>
-        <section>
+        </Panel>
+        <Panel className="module">
           <h2><i>03</i> Checkpoint archive</h2>
           {original && (
-            <button
-              className={sourceId === "original" ? "active" : ""}
-              onClick={() => void selectCheckpoint("original")}
+            <Button size="sm"
+              aria-pressed={sourceId === "original"} className={sourceId === "original" ? "active" : ""}
+              onClick={() => void perform(() => selectCheckpoint("original"))}
             >
               Original root
-            </button>
+            </Button>
           )}
           {checkpoints.map((cp) => (
             <div className="checkpoint" key={cp.id}>
               {cp.url && <img src={cp.url} alt="" />}
-              <button
-                className={sourceId === cp.id ? "active" : ""}
-                onClick={() => void selectCheckpoint(cp.id)}
+              <Button size="sm"
+                aria-pressed={sourceId === cp.id} className={sourceId === cp.id ? "active" : ""}
+                onClick={() => void perform(() => selectCheckpoint(cp.id))}
               >
                 {cp.name}
-              </button>
-              <button
+              </Button>
+              <Button size="sm"
                 onClick={() =>
                   cp.url &&
                   Object.assign(document.createElement("a"), {
@@ -666,66 +727,62 @@ export function App(): React.ReactElement {
                 }
               >
                 Down
-              </button>
-              <button
-                onClick={() =>
-                  setCheckpoints((items) =>
-                    items.filter((item) => item.id !== cp.id),
-                  )
-                }
-              >
-                Del
-              </button>
+              </Button>
+              <Button size="sm" aria-label={`Delete ${cp.name}`} onClick={() => deleteCheckpoint(cp)}>Del</Button>
             </div>
           ))}
-        </section>
+        </Panel>
       </aside>
 
-      <section className="viewport">
+      <section className="viewport" aria-label="Artwork workspace">
         <div className="viewportLabel">VISUAL OUTPUT / PREVIEW MATRIX</div>
         {!source && (
-          <div className="dropzone">
-            Drop an image, paste from clipboard, or use Upload.
-          </div>
+          <Panel className="dropzone">
+            <Badge tone="yellow">Image instrument / 01</Badge>
+            <h1>A little noise.<br />A new image.</h1>
+            <p>Drop an image here, paste from your clipboard, or upload to begin. Build a stack. Make a print.</p>
+            <Button tone="orange" onClick={() => imageInputRef.current?.click()}>Choose an image <Upload size={18} /></Button>
+            <small>PNG / JPEG / WEBP · up to 32 megapixels</small>
+          </Panel>
         )}
-        <div className={`canvasWrap ${renderState === "stale" ? "isStale" : ""}`}>
-          <canvas ref={canvasRef} />
+        <div hidden={!source} className={`canvasWrap ${renderState === "stale" ? "isStale" : ""}`}>
+          <canvas ref={canvasRef} role="img" aria-label={compare ? "Original source image" : "Processed image preview"} />
           {renderState === "stale" && <span className="staleFlag">STALE PREVIEW / RENDERING {isInteracting ? "DRAFT" : quality.toUpperCase()}</span>}
         </div>
         <div className="readout">{previewSize} · {(zoom * 100).toFixed(0)}% · {isInteracting ? "DRAFT" : quality.toUpperCase()} · {renderMs.toFixed(1)} MS</div>
-        <div className="viewtools">
-          <button onClick={() => setZoom(1)}>100%</button>
-          <button onClick={() => setZoom((z) => Math.max(0.1, z - 0.1))}>
-            -
-          </button>
-          <button onClick={() => setZoom((z) => Math.min(8, z + 0.1))}>
+        <div className="viewtools" aria-label="Zoom controls">
+          <Button size="sm" onClick={() => setZoom(1)}>100%</Button>
+          <Button size="sm" onClick={() => setZoom((z) => Math.max(0.1, z - 0.1))} aria-label="Zoom out">
+            −
+          </Button>
+          <Button size="sm" onClick={() => setZoom((z) => Math.min(8, z + 0.1))} aria-label="Zoom in">
             +
-          </button>
-          <button
+          </Button>
+          <Button size="sm"
             onClick={() =>
               setZoom(
                 Math.min(
                   1,
-                  900 / Math.max(preview?.width ?? 900, preview?.height ?? 900),
+                  (document.querySelector<HTMLElement>(".viewport")!.clientWidth - 64) / (preview?.width ?? 900),
+                  (document.querySelector<HTMLElement>(".viewport")!.clientHeight - 160) / (preview?.height ?? 900),
                 ),
               )
             }
           >
             Fit
-          </button>
+          </Button>
         </div>
       </section>
 
       <aside className="right panel">
-        <section>
+        <Panel className="module">
           <h2><i>04</i> Ordered stage stack</h2>
           {pipeline.map((stage, index) => (
             <div
               className={`stage ${selectedStage?.id === stage.id ? "active" : ""}`}
               key={stage.id}
-              onClick={() => setSelectedStageId(stage.id)}
             >
-              <button
+              <Button size="sm" aria-label={`Toggle stage ${index + 1}`} aria-pressed={stage.enabled}
                 onClick={(e) => {
                   e.stopPropagation();
                   updatePipeline(
@@ -736,11 +793,11 @@ export function App(): React.ReactElement {
                 }}
               >
                 {stage.enabled ? "on" : "off"}
-              </button>
-              <span>
+              </Button>
+              <Button size="sm" className="stageSelect" aria-pressed={selectedStage?.id === stage.id} onClick={() => setSelectedStageId(stage.id)}>
                 {index + 1}. {processorRegistry[stage.type].name}
-              </span>
-              <button
+              </Button>
+              <Button size="sm" aria-label={`Lock stage ${index + 1}`} aria-pressed={stage.locked}
                 onClick={(e) => {
                   e.stopPropagation();
                   updatePipeline(
@@ -751,24 +808,24 @@ export function App(): React.ReactElement {
                 }}
               >
                 {stage.locked ? <Lock size={13} /> : <LockOpen size={13} />}
-              </button>
-              <button
+              </Button>
+              <Button size="sm" aria-label={`Move stage ${index + 1} up`} disabled={index === 0}
                 onClick={(e) => {
                   e.stopPropagation();
                   moveStage(stage.id, -1);
                 }}
               >
                 Up
-              </button>
-              <button
+              </Button>
+              <Button size="sm" aria-label={`Move stage ${index + 1} down`} disabled={index === pipeline.length - 1}
                 onClick={(e) => {
                   e.stopPropagation();
                   moveStage(stage.id, 1);
                 }}
               >
                 Dn
-              </button>
-              <button
+              </Button>
+              <Button size="sm" aria-label={`Duplicate stage ${index + 1}`} disabled={pipeline.length >= MAX_STAGE_COUNT}
                 onClick={(e) => {
                   e.stopPropagation();
                   updatePipeline([
@@ -779,20 +836,20 @@ export function App(): React.ReactElement {
                 }}
               >
                 Dup
-              </button>
-              <button
+              </Button>
+              <Button size="sm" aria-label={`Delete stage ${index + 1}`}
                 onClick={(e) => {
                   e.stopPropagation();
                   updatePipeline(pipeline.filter((s) => s.id !== stage.id));
                 }}
               >
                 Del
-              </button>
+              </Button>
             </div>
           ))}
-        </section>
+        </Panel>
         {selectedStage && (
-          <section>
+          <Panel className="module">
             <h2>{processorRegistry[selectedStage.type].name}</h2>
             <p className="desc">
               {processorRegistry[selectedStage.type].description}
@@ -801,20 +858,22 @@ export function App(): React.ReactElement {
               ([key, meta]) => {
                 const value = selectedStage.params[key] ?? meta.default;
                 return (
-                  <label className="control" key={key} title={meta.description}>
+                  <div className="control" key={key} title={meta.description}>
                     <span>
-                      {meta.label}
-                      <button onClick={() => lockParam(selectedStage.id, key)}>
+                      <label htmlFor={`param-${key}`}>{meta.label}</label>
+                      <Button size="sm" aria-label={`Lock ${meta.label}`} aria-pressed={Boolean(selectedStage.locks?.[key])} onClick={() => lockParam(selectedStage.id, key)}>
                         {selectedStage.locks?.[key] ? (
                           <Lock size={11} />
                         ) : (
                           <LockOpen size={11} />
                         )}
-                      </button>
+                      </Button>
                     </span>
                     {meta.type === "number" && (
                       <>
                         <input
+                          className="sh-range"
+                          aria-label={`${meta.label} slider`}
                           type="range"
                           min={meta.min}
                           max={meta.max}
@@ -823,6 +882,7 @@ export function App(): React.ReactElement {
                           onPointerDown={beginInteraction}
                           onPointerUp={endInteraction}
                           onPointerCancel={endInteraction}
+                          onBlur={endInteraction}
                           onKeyDown={beginInteraction}
                           onKeyUp={endInteraction}
                           onChange={(e) =>
@@ -834,6 +894,9 @@ export function App(): React.ReactElement {
                           }
                         />
                         <input
+                          className="sh-input"
+                          id={`param-${key}`}
+                          min={meta.min} max={meta.max} step={meta.step}
                           type="number"
                           value={Number(value)}
                           onChange={(e) =>
@@ -848,6 +911,8 @@ export function App(): React.ReactElement {
                     )}
                     {meta.type === "boolean" && (
                       <input
+                        id={`param-${key}`}
+                        className="sh-switch"
                         type="checkbox"
                         checked={Boolean(value)}
                         onChange={(e) =>
@@ -861,6 +926,8 @@ export function App(): React.ReactElement {
                     )}
                     {meta.type === "color" && (
                       <input
+                        id={`param-${key}`}
+                        className="sh-input"
                         type="color"
                         value={String(value)}
                         onChange={(e) =>
@@ -874,6 +941,7 @@ export function App(): React.ReactElement {
                     )}
                     {meta.type === "text" && (
                       <input
+                        id={`param-${key}`} className="sh-input"
                         value={String(value)}
                         onChange={(e) =>
                           updateStageParam(
@@ -886,6 +954,7 @@ export function App(): React.ReactElement {
                     )}
                     {meta.type === "select" && (
                       <select
+                        id={`param-${key}`} className="sh-select"
                         value={String(value)}
                         onChange={(e) =>
                           updateStageParam(
@@ -906,6 +975,7 @@ export function App(): React.ReactElement {
                     )}
                     {meta.type === "palette" && (
                       <textarea
+                        id={`param-${key}`} className="sh-input"
                         value={(value as string[]).join("\n")}
                         onChange={(e) =>
                           updateStageParam(
@@ -916,11 +986,11 @@ export function App(): React.ReactElement {
                         }
                       />
                     )}
-                  </label>
+                  </div>
                 );
               },
             )}
-            <button
+            <Button size="sm"
               onClick={() =>
                 updatePipeline(
                   pipeline.map((s) =>
@@ -932,9 +1002,9 @@ export function App(): React.ReactElement {
               }
             >
               Reset Stage
-            </button>
+            </Button>
             {source && (
-              <button
+              <Button size="sm"
                 onClick={() =>
                   updateStageParam(
                     selectedStage.id,
@@ -944,14 +1014,14 @@ export function App(): React.ReactElement {
                 }
               >
                 Extract Palette
-              </button>
+              </Button>
             )}
-          </section>
+          </Panel>
         )}
       </aside>
 
       <footer className="status">
-        <span><b>SYS</b> {status}</span>
+        <span role="status" aria-live="polite"><b>SYS</b> {status}</span>
         <span>SRC {sourceSize}</span>
         <span>PREV {previewSize}</span>
         <span>EXPORT {sourceSize}</span>
@@ -960,11 +1030,16 @@ export function App(): React.ReactElement {
         <span>ZOOM {(zoom * 100).toFixed(0)}%</span>
         <span>SEED {seed}</span>
         <span>CACHE {metrics ? `${metrics.cacheHits}H/${metrics.cacheMisses}M` : "COLD"}</span>
-        <span>WORKER {renderState === "ready" ? "IDLE" : "ACTIVE"}</span>
+        <span>WORKER {renderState === "error" ? "ERROR" : renderState === "ready" ? "IDLE" : "ACTIVE"}</span>
         <span>
           {memory > MAX_CHECKPOINT_MEMORY ? "memory warning" : "stable"}
         </span>
       </footer>
+      <Dialog open={saveOpen} onOpenChange={setSaveOpen} title="Save your stack" description="Keep this preset in this browser. Export JSON for a portable copy." footer={<Button tone="orange" disabled={!savedName.trim()} onClick={savePreset}>Save preset</Button>}>
+        <form onSubmit={(event) => { event.preventDefault(); savePreset(); }}>
+          <TextField label="Preset name" autoFocus value={savedName} onChange={(event) => setSavedName(event.target.value)} />
+        </form>
+      </Dialog>
     </main>
   );
 }

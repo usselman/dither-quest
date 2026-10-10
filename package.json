@@ -9,12 +9,13 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@vitejs/plugin-react": "^4.3.4",
+    "@sheol/ui": "file:vendor/sheol-ui-0.2.0.tgz",
+    "@vitejs/plugin-react": "6.1.2",
     "lucide-react": "^0.468.0",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
     "typescript": "^5.7.2",
-    "vite": "^6.0.7"
+    "vite": "8.3.4"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
@@ -25,6 +26,6 @@
     "globals": "^15.14.0",
     "jsdom": "^29.1.1",
     "typescript-eslint": "^8.62.1",
-    "vitest": "^2.1.8"
+    "vitest": "5.0.3"
   }
 }
